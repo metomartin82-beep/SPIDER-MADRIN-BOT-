@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Alexa — Pair a WhatsApp Number</title>
+<style>
+  *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+  body{
+    background:#0B0E14; color:#EDEFF3; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{ width:100%; max-width:420px; background:#141824; border:1px solid #232838; border-radius:14px; padding:32px; }
+  .logo{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:20px; margin-bottom:6px; }
+  .logo .dot{ width:10px; height:10px; border-radius:50%; background:#5CE1B0; box-shadow:0 0 10px #5CE1B0; }
+  .sub{ color:#8B93A6; font-size:13.5px; margin-bottom:28px; }
+  label{ display:block; font-size:12.5px; color:#8B93A6; margin-bottom:6px; }
+  input{
+    width:100%; background:#0E121C; border:1px solid #232838; border-radius:8px;
+    padding:11px 13px; color:#EDEFF3; font-size:14.5px; margin-bottom:16px;
+  }
+  input:focus{ outline:none; border-color:#5CE1B0; }
+  button{
+    width:100%; padding:12px; border-radius:8px; border:none; background:#5CE1B0; color:#08110D;
+    font-weight:700; font-size:14.5px; cursor:pointer; transition:opacity .15s;
+  }
+  button:hover{ opacity:.9; }
+  button:disabled{ opacity:.5; cursor:not-allowed; }
+  .msg{ font-size:13.5px; padding:12px 14px; border-radius:8px; margin-top:16px; display:none; }
+  .msg.error{ background:rgba(224,90,90,.1); border:1px solid rgba(224,90,90,.3); color:#e57d7d; }
+  .msg.success{ background:rgba(92,225,176,.08); border:1px solid rgba(92,225,176,.3); color:#5CE1B0; }
+  .code-box{
+    display:none; text-align:center; margin-top:20px; padding:20px; background:#0E121C;
+    border:1px solid #5CE1B0; border-radius:10px;
+  }
+  .code-box .label{ font-size:12px; color:#8B93A6; margin-bottom:8px; }
+  .code-box .code{ font-family:'Courier New',monospace; font-size:28px; font-weight:700; letter-spacing:5px; color:#5CE1B0; }
+  .code-box .hint{ font-size:12px; color:#8B93A6; margin-top:12px; line-height:1.5; }
+  .tabs{ display:flex; gap:6px; margin-bottom:24px; background:#0E121C; padding:4px; border-radius:8px; }
+  .tab{ flex:1; text-align:center; padding:8px; border-radius:6px; font-size:13px; cursor:pointer; color:#8B93A6; }
+  .tab.active{ background:#232838; color:#EDEFF3; }
+  .panel{ display:none; }
+  .panel.active{ display:block; }
+  .session-row{
+    display:flex; align-items:center; justify-content:space-between; padding:12px 14px;
+    background:#0E121C; border:1px solid #232838; border-radius:8px; margin-bottom:8px; font-size:13.5px;
+  }
+  .session-row .status{ width:8px; height:8px; border-radius:50%; margin-right:8px; flex-shrink:0; display:inline-block; }
+  .session-row .status.on{ background:#5CE1B0; }
+  .session-row .status.off{ background:#666; }
+  .session-row button{ width:auto; padding:6px 12px; font-size:12px; background:rgba(224,90,90,.15); color:#e57d7d; }
+  .empty{ text-align:center; color:#8B93A6; font-size:13px; padding:24px 0; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo"><span class="dot"></span> Alexa</div>
+  <p class="sub">Pair a WhatsApp number without needing Telegram.</p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="pair" onclick="switchTab('pair')">Pair a number</div>
+    <div class="tab" data-tab="sessions" onclick="switchTab('sessions')">Manage sessions</div>
+  </div>
+
+  <div class="panel active" id="panel-pair">
+    <label for="access-code">Access code</label>
+    <input type="password" id="access-code" placeholder="WEB_PAIR_CODE from .env" autocomplete="off"/>
+
+    <label for="wa-number">WhatsApp number (with country code, no +)</label>
+    <input type="text" id="wa-number" placeholder="2547XXXXXXXX" autocomplete="off"/>
+
+    <button onclick="doPair()" id="pair-btn">Get pairing code</button>
+
+    <div class="msg" id="pair-msg"></div>
+
+    <div class="code-box" id="code-box">
+      <div class="label">Your pairing code</div>
+      <div class="code" id="pair-code">— — — — — —</div>
+      <div class="hint">Open WhatsApp → Settings → Linked Devices → Link a Device → Link with phone number instead, then enter this code.</div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-sessions">
+    <label for="access-code-2">Access code</label>
+    <input type="password" id="access-code-2" placeholder="WEB_PAIR_CODE from .env" autocomplete="off"/>
+    <button onclick="loadSessions()" id="load-btn">Load sessions</button>
+    <div id="sessions-list" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<script>
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+function showMsg(id, text, type){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = `msg ${type}`;
+  el.style.display = 'block';
+}
+
+async function doPair(){
+  const accessCode = document.getElementById('access-code').value.trim();
+  const number = document.getElementById('wa-number').value.trim();
+  const btn = document.getElementById('pair-btn');
+  document.getElementById('code-box').style.display = 'none';
+  document.getElementById('pair-msg').style.display = 'none';
+
+  if (!accessCode) return showMsg('pair-msg', 'Enter the access code from your .env file.', 'error');
+  if (!number) return showMsg('pair-msg', 'Enter a WhatsApp number.', 'error');
+
+  btn.disabled = true;
+  btn.textContent = 'Requesting code...';
+
+  try {
+    const res = await fetch('/api/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessCode, number })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Pairing failed.');
+
+    document.getElementById('pair-code').textContent = data.pairCode;
+    document.getElementById('code-box').style.display = 'block';
+  } catch (err) {
+    showMsg('pair-msg', err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Get pairing code';
+  }
+}
+
+async function loadSessions(){
+  const accessCode = document.getElementById('access-code-2').value.trim();
+  const listEl = document.getElementById('sessions-list');
+  if (!accessCode) return alert('Enter the access code first.');
+
+  const btn = document.getElementById('load-btn');
+  btn.disabled = true; btn.textContent = 'Loading...';
+
+  try {
+    const res = await fetch('/api/sessions', { headers: { 'x-pair-code': accessCode } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to load sessions.');
+
+    if (!data.sessions.length) {
+      listEl.innerHTML = '<div class="empty">No sessions yet.</div>';
+      return;
+    }
+    listEl.innerHTML = data.sessions.map(s => `
+      <div class="session-row">
+        <span><span class="status ${s.online ? 'on' : 'off'}"></span>${s.number} <span style="color:#8B93A6">(${s.name})</span></span>
+        <button onclick="deleteSession('${s.name}', '${accessCode}')">Delete</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    listEl.innerHTML = `<div class="msg error" style="display:block">${err.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load sessions';
+  }
+}
+
+async function deleteSession(name, accessCode){
+  if (!confirm(`Unlink session "${name}"? This can't be undone.`)) return;
+  try {
+    const res = await fetch(`/api/sessions/${name}`, { method: 'DELETE', headers: { 'x-pair-code': accessCode } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete.');
+    loadSessions();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+</script>
+</body>
+</html>

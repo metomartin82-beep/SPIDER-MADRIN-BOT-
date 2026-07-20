@@ -1,0 +1,19 @@
+{
+  "name": "alexa-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@trashcore/baileys": "latest",
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.1.5",
+    "telegraf": "^4.16.3",
+    "pino": "^8.21.0",
+    "dotenv": "^16.4.5",
+    "yt-search": "^2.11.1"
+  }
+}
